@@ -75,6 +75,12 @@ MainWidget::MainWidget(QWidget *parent)
                 qDebug() << "文件按钮点击";
             });
         }
+
+        // 录制按钮
+        QPushButton *recordBtn = ui->recordButton;
+        if (recordBtn) {
+            connect(recordBtn, &QPushButton::clicked, myVideo, &VideoWidget::toggleRecording);
+        }
     }
 
     // 2. 📢 关键音视频桥接：把 AudioAnalyzer 截获的声音导入到 VideoWidget
@@ -131,6 +137,16 @@ QPushButton#captureButton {
 QPushButton#captureButton:hover {
     background-color: #3B82F6;
     border: 1px solid #3B82F6;
+}
+
+QPushButton#recordButton {
+    background-color: #EF4444;
+    color: white;
+}
+
+QPushButton#recordButton:hover {
+    background-color: #F87171;
+    border: 1px solid #F87171;
 }
 
 /* 右侧按钮 */
