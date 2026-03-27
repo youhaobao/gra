@@ -14,9 +14,10 @@ SrtServer::~SrtServer() {
 void SrtServer::startServer() {
     if (isRunning) return;
 
-    // 1. 加入 config-interval=1: 每秒发送一次 SPS/PPS 关键信息
-    // 2. 加入 tune=zerolatency: 降低编码延迟
-    QString pipeStr =
+    GError *error = nullptr;
+
+    // 首先尝试硬件编码器 (mpph264enc)
+    QString hwPipeStr =
         "appsrc name=mysink is-live=true format=3 ! "
         "video/x-raw,format=NV12,width=640,height=480,framerate=30/1 ! "
         "mpph264enc gop=30 bps=2000000 ! "
@@ -24,12 +25,41 @@ void SrtServer::startServer() {
         "mpegtsmux ! "
         "srtsink uri=\"srt://:8890?mode=listener\" sync=false";
 
-    GError *error = nullptr;
-    pipeline = gst_parse_launch(pipeStr.toUtf8().data(), &error);
-    if (error) {
-        qDebug() << "❌ Server Pipeline Error:" << error->message;
-        g_error_free(error);
-        return;
+    pipeline = gst_parse_launch(hwPipeStr.toUtf8().data(), &error);
+    
+    if (error || !pipeline) {
+        qDebug() << "⚠️ 硬件编码器 mpph264enc 启动失败，切换到软件编码器 x264enc";
+        if (error) {
+            g_error_free(error);
+            error = nullptr;
+        }
+        if (pipeline) {
+            gst_object_unref(pipeline);
+            pipeline = nullptr;
+        }
+
+        // 使用软件编码器 (x264enc)
+        QString swPipeStr =
+            "appsrc name=mysink is-live=true format=3 ! "
+            "video/x-raw,format=NV12,width=640,height=480,framerate=30/1 ! "
+            "x264enc key-int-max=30 bitrate=2000 speed-preset=ultrafast tune=zerolatency ! "
+            "h264parse config-interval=1 ! "
+            "mpegtsmux ! "
+            "srtsink uri=\"srt://:8890?mode=listener\" sync=false";
+
+        pipeline = gst_parse_launch(swPipeStr.toUtf8().data(), &error);
+        
+        if (error || !pipeline) {
+            qDebug() << "❌ 软件编码器也启动失败:" << (error ? error->message : "unknown error");
+            if (error) g_error_free(error);
+            if (pipeline) gst_object_unref(pipeline);
+            pipeline = nullptr;
+            return;
+        }
+        
+        qDebug() << "✅ 使用软件编码器 x264enc";
+    } else {
+        qDebug() << "✅ 使用硬件编码器 mpph264enc";
     }
 
     appsrc = gst_bin_get_by_name(GST_BIN(pipeline), "mysink");
