@@ -270,20 +270,13 @@ void VideoWidget::paintEvent(QPaintEvent *event) {
         painter.drawText(targetRect.adjusted(10, 20, 0, 0), "SYSTEM: ACTIVE | PROTOCOL: SRT");
         painter.drawText(targetRect.adjusted(10, 35, 0, 0), "HARDWARE: RK3576 NPU/RGA");
     }
-    m_imgMutex.unlock();
 
     static int flashEffect = 0;
-
-    m_imgMutex.lock();
-    // 绘制视频帧等逻辑...
-    if (!m_currentImage.isNull()) {
-        // ... (你原有的绘制 QImage 代码)
-    }
-    m_imgMutex.unlock();
 
     // 检查是否有拍照请求，如果有，触发闪烁
     if (m_snapshotRequested) {
         flashEffect = 4; // 持续 4 帧的白光
+        m_snapshotRequested = false;
     }
 
     if (flashEffect > 0) {
@@ -292,6 +285,8 @@ void VideoWidget::paintEvent(QPaintEvent *event) {
         flashEffect--;
         update(); // 强制刷新界面以完成闪烁动画
     }
+
+    m_imgMutex.unlock();
 }
 
 void VideoWidget::resizeEvent(QResizeEvent *event) {

@@ -14,20 +14,15 @@ AudioWidget::AudioWidget(QWidget *parent)
     , m_isSimulating(false)
     , m_sensitivity(1.5)
 {
-    // 设置布局
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setContentsMargins(0, 0, 0, 0);
     m_mainLayout->setSpacing(10);
 
-    // 创建波形图widget
-    m_waveformWidget = new QWidget(this);
-    m_waveformWidget->setFixedHeight(100);
+    m_waveformWidget = new WaveformWidget(this);
     m_mainLayout->addWidget(m_waveformWidget);
 
-    // 设置进度条
     setupProgressBars();
 
-    // === 加载背景图片 ===
     QString backgroundPath = "/home/baiwen/Downloads/gra/images/audio.png";
     if (QFile::exists(backgroundPath)) {
         m_background.load(backgroundPath);
@@ -49,18 +44,19 @@ void AudioWidget::setSpectrum(const QVector<qreal> &values) {
     if (values.size() != m_spectrum.size()) return;
 
     for (int i = 0; i < m_spectrum.size(); ++i) {
-        qreal target = values[i]; // 不再乘以 0.8
+        qreal target = values[i];
 
         if (target > m_spectrum[i]) {
-            // 瞬间弹起，无延迟
             m_spectrum[i] = target;
         } else {
-            // 优雅下落
             m_spectrum[i] -= 0.05;
             if (m_spectrum[i] < 0) m_spectrum[i] = 0;
         }
     }
-    update();
+    
+    if (m_waveformWidget) {
+        m_waveformWidget->setSpectrum(m_spectrum);
+    }
 }
 
 void AudioWidget::setUseRealAudio(bool useReal)
@@ -78,7 +74,6 @@ void AudioWidget::setUseRealAudio(bool useReal)
 
 void AudioWidget::setupProgressBars()
 {
-    // 音量进度条
     m_volumeLabel = new QLabel("音量", this);
     m_volumeLabel->setStyleSheet("font-size: 12px; color: #999999;");
     m_mainLayout->addWidget(m_volumeLabel);
@@ -89,7 +84,6 @@ void AudioWidget::setupProgressBars()
     m_volumeBar->setStyleSheet("QProgressBar { border: none; background-color: #E5E7EB; border-radius: 4px; height: 8px; } QProgressBar::chunk { background-color: #1677FF; border-radius: 4px; }");
     m_mainLayout->addWidget(m_volumeBar);
 
-    // 频率进度条
     m_frequencyLabel = new QLabel("频率", this);
     m_frequencyLabel->setStyleSheet("font-size: 12px; color: #999999;");
     m_mainLayout->addWidget(m_frequencyLabel);
@@ -100,7 +94,6 @@ void AudioWidget::setupProgressBars()
     m_frequencyBar->setStyleSheet("QProgressBar { border: none; background-color: #E5E7EB; border-radius: 4px; height: 8px; } QProgressBar::chunk { background-color: #1677FF; border-radius: 4px; }");
     m_mainLayout->addWidget(m_frequencyBar);
 
-    // 噪音进度条
     m_noiseLabel = new QLabel("噪音", this);
     m_noiseLabel->setStyleSheet("font-size: 12px; color: #999999;");
     m_mainLayout->addWidget(m_noiseLabel);
@@ -117,7 +110,10 @@ void AudioWidget::initializeRandomSpectrum()
     for (int i = 0; i < m_spectrum.size(); ++i) {
         m_spectrum[i] = QRandomGenerator::global()->generateDouble() * 0.6;
     }
-    update();
+    
+    if (m_waveformWidget) {
+        m_waveformWidget->setSpectrum(m_spectrum);
+    }
 }
 
 void AudioWidget::onTimeout()
@@ -135,7 +131,6 @@ void AudioWidget::onTimeout()
         m_spectrum[i] = qBound(0.0, m_spectrum[i], 1.0);
     }
 
-    // 更新进度条
     if (m_volumeBar) {
         int currentVolume = m_volumeBar->value();
         int deltaVolume = (QRandomGenerator::global()->generateDouble() - 0.5) * 10;
@@ -157,46 +152,7 @@ void AudioWidget::onTimeout()
         m_noiseBar->setValue(newNoise);
     }
 
-    update();
-}
-
-void AudioWidget::paintEvent(QPaintEvent *event) {
-    Q_UNUSED(event);
-    if (!m_waveformWidget) return;
-
-    QPainter painter(m_waveformWidget);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform);
-
-    // === 绘制背景 ===
-    painter.fillRect(m_waveformWidget->rect(), QColor("#F8FAFC"));
-
-    // === 绘制透明律动条 ===
-    int barCount = m_spectrum.size();
-    double spacing = 4.0;
-    double barWidth = (double)(m_waveformWidget->width() - (barCount + 1) * spacing) / barCount;
-
-    for (int i = 0; i < barCount; ++i) {
-        double barHeight = m_spectrum[i] * (m_waveformWidget->height() * 0.85);
-
-        // === 透明律动条（使用半透明微光蓝）===
-        QColor barColor(22, 119, 255, 180); // #1677FF with 70% opacity
-
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(barColor);
-        painter.drawRect(spacing + i * (barWidth + spacing),
-                         m_waveformWidget->height() - barHeight,
-                         barWidth,
-                         barHeight);
-
-        // === 顶部高亮点（更透明）===
-        if (barHeight > 4) {
-            QColor highlightColor(255, 255, 255, 100); // 白色，40% 透明度
-            painter.setBrush(highlightColor);
-            painter.drawRect(spacing + i * (barWidth + spacing),
-                             m_waveformWidget->height() - barHeight,
-                             barWidth,
-                             2);
-        }
+    if (m_waveformWidget) {
+        m_waveformWidget->setSpectrum(m_spectrum);
     }
 }

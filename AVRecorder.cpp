@@ -13,8 +13,10 @@ AVRecorder::~AVRecorder() {
 void AVRecorder::startRecording(const QString &filePath) {
     if (isRecording) return;
 
-    // 构建 GStreamer 硬件编码双轨管道 (Video: H264, Audio: Opus)
-    QString pipeStr = QString(
+    GError *error = nullptr;
+
+    // 首先尝试硬件编码器 (mpph264enc)
+    QString hwPipeStr = QString(
                           "appsrc name=vsrc is-live=true do-timestamp=true format=time ! "
                           "video/x-raw,format=NV12,width=640,height=480,framerate=30/1 ! "
                           "queue ! mpph264enc ! h264parse ! queue ! matroskamux name=mux ! "
@@ -24,12 +26,43 @@ void AVRecorder::startRecording(const QString &filePath) {
                           "queue ! audioconvert ! audioresample ! opusenc ! queue ! mux."
                           ).arg(filePath);
 
-    GError *error = nullptr;
-    pipeline = gst_parse_launch(pipeStr.toUtf8().data(), &error);
-    if (error) {
-        qCritical() << "❌ AVRecorder 管道创建失败:" << error->message;
-        g_error_free(error);
-        return;
+    pipeline = gst_parse_launch(hwPipeStr.toUtf8().data(), &error);
+
+    if (error || !pipeline) {
+        qDebug() << "⚠️ 硬件编码器 mpph264enc 启动失败，切换到软件编码器 x264enc";
+        if (error) {
+            g_error_free(error);
+            error = nullptr;
+        }
+        if (pipeline) {
+            gst_object_unref(pipeline);
+            pipeline = nullptr;
+        }
+
+        // 使用软件编码器 (x264enc)
+        QString swPipeStr = QString(
+                              "appsrc name=vsrc is-live=true do-timestamp=true format=time ! "
+                              "video/x-raw,format=NV12,width=640,height=480,framerate=30/1 ! "
+                              "queue ! x264enc ! h264parse ! queue ! matroskamux name=mux ! "
+                              "filesink location=\"%1\" "
+                              "appsrc name=asrc is-live=true do-timestamp=true format=time ! "
+                              "audio/x-raw,format=S16LE,rate=44100,channels=2,layout=interleaved ! "
+                              "queue ! audioconvert ! audioresample ! opusenc ! queue ! mux."
+                              ).arg(filePath);
+
+        pipeline = gst_parse_launch(swPipeStr.toUtf8().data(), &error);
+
+        if (error || !pipeline) {
+            qCritical() << "❌ AVRecorder 管道创建失败:" << (error ? error->message : "unknown error");
+            if (error) g_error_free(error);
+            if (pipeline) gst_object_unref(pipeline);
+            pipeline = nullptr;
+            return;
+        }
+        
+        qDebug() << "✅ 使用软件编码器 x264enc";
+    } else {
+        qDebug() << "✅ 使用硬件编码器 mpph264enc";
     }
 
     vsrc = gst_bin_get_by_name(GST_BIN(pipeline), "vsrc");
@@ -37,7 +70,7 @@ void AVRecorder::startRecording(const QString &filePath) {
 
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
     isRecording = true;
-    qDebug() << "🔴 硬件级音视频录制已启动:" << filePath;
+    qDebug() << "🔴 音视频录制已启动:" << filePath;
 }
 
 void AVRecorder::stopRecording() {
